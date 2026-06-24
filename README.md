@@ -118,3 +118,45 @@ Verify ADB and emulator.
 - rule based
 - content based
 - ranking
+
+
+React Native app
+      ↕  HTTP requests (JSON)
+   api.py  ← translation layer
+      ↕  Python function calls
+   data.py  ← database logic
+      ↕  SQL
+   books.db  ← SQLite database
+
+
+
+Book AI/
+├── backend/              ← move your Python files here
+│   ├── api.py
+│   ├── data.py
+│   ├── schema.sql
+│   ├── seed.sql
+│   ├── _test.py
+│   └── books.db          (generated, add to .gitignore)
+│
+└── mobile/               ← new React Native project lives here
+    ├── src/
+    │   ├── api/
+    │   │   ├── config.ts       ← base URL
+    │   │   └── books.ts        ← fetch wrappers
+    │   ├── screens/
+    │   │   ├── BooksScreen.tsx
+    │   │   └── AddBookScreen.tsx
+    │   ├── components/
+    │   │   └── BookCard.tsx
+    │   └── types/
+    │       └── book.ts         ← shared TypeScript types
+    ├── package.json
+    └── ...
+
+
+## Components used so far 
+
+- book animation : https://app.lottiefiles.com/animation/39584c30-5f78-491c-ae60-2b529f6bea9c?channel=web&from=embed&panel=download&source=public-animation
+
+- dragon icon (will be replaced) : https://www.flaticon.com/free-icon/dragon_4475009?term=dragon&page=1&position=8&origin=search&related_id=4475009

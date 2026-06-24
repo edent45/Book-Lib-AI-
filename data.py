@@ -52,6 +52,7 @@ def add_book(
 
     author_id = get_or_create_id_by_name(con, "Authors", author)
     genre_id = get_or_create_id_by_name(con, "Genres", genre) if genre else None
+    
 
     series_id = None
     if series:
@@ -106,7 +107,8 @@ def add_book(
 
     con.commit()
     con.close()
-    print({"id": book_id, "title": title})
+    #print({"id": book_id, "title": title})
+    return {"id": book_id, "title": title}
 
 def list_books():
     con = connect()
@@ -125,6 +127,7 @@ def list_books():
           b.read_year,
           b.rating,
           b.isbn,
+          b.cover_image,
           GROUP_CONCAT(t.name, ', ') AS tags
         FROM Books b
         LEFT JOIN Authors a ON a.id = b.author_id
@@ -136,8 +139,11 @@ def list_books():
         ORDER BY b.title ASC
         """
     )
+    
+    dict_books = []
+    
     for row in cur.fetchall():
-        print({
+        dict_books.append({
             "id": row[0],
             "title": row[1],
             "author": row[2],
@@ -149,9 +155,28 @@ def list_books():
             "read_year": row[8],
             "rating": row[9],
             "isbn": row[10],
-            "tags": row[11],
+            "cover_image": row[11],
+            "tags": row[12],
         })
+        
+        """print({
+            "id": row[0],
+            "title": row[1],
+            "author": row[2],
+            "genre": row[3],
+            "series": row[4],
+            "position": row[5],
+            "language": row[6],
+            "published_date": row[7],
+            "read_year": row[8],
+            "rating": row[9],
+            "isbn": row[10],
+            "cover_image": row[11],
+            "tags": row[12],
+        })"""
     con.close()
+    
+    return dict_books
 
 
 def set_series_progress(series_title: str, status: str):
@@ -172,9 +197,15 @@ def set_series_progress(series_title: str, status: str):
         ON CONFLICT(series_id) DO UPDATE SET status = excluded.status, updated_at = CURRENT_TIMESTAMP
     """, (series_id, status)) # Insert or update the series progress
     
+    dict_status = {
+        "series_id": series_id,
+        "status": status
+    }
+    
     con.commit() # Commit the transaction
     con.close() # Close the database connection
-    print(f"Series '{series_title}' progress set to '{status}'.")
+    #print(f"Series '{series_title}' progress set to '{status}'.")
+    return dict_status
     
 
 
@@ -207,7 +238,7 @@ if __name__ == "__main__":
     if args.cmd == "add-author":
         add_author(args.name, args.country)
     elif args.cmd == "add-book":
-        add_book(
+        book = add_book(
             title=args.title,
             author=args.author,
             genre=args.genre,
@@ -222,6 +253,7 @@ if __name__ == "__main__":
             isbn=args.isbn,
         )
     elif args.cmd == "list-books":
-        list_books()
-        
+        books = list_books()
+        for book in books:
+            print(book)
     
