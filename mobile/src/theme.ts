@@ -25,6 +25,8 @@ export const colors = {
   statCard1: '#1a2a3a',     // dark teal-blue
   statCard2: '#261a3e',     // dark purple
   statCard3: '#1a2e2a',     // dark teal-green
+  statCard4: '#3a1a2a',     // dark maroon
+  statCard5: '#7446ac',     // dark purple
 
   // ── Text ─────────────────────────────────────────
   primaryText: '#f0f0ff',   // near-white

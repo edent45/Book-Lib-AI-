@@ -43,7 +43,7 @@ export default function HomeScreen() {
   const totalBooks = books.length;
   const rated = books.filter(b => b.rating !== null);
   const avgRating =
-    rated.length > 0
+    rated.length > 0 // if there are rated books, calculate the average rating
       ? (rated.reduce((sum, b) => sum + (b.rating ?? 0), 0) / rated.length).toFixed(1)
       : '—';
   const seriesCount = new Set(books.map(b => b.series).filter(Boolean)).size;
@@ -53,6 +53,29 @@ export default function HomeScreen() {
     .slice(0, 5);
 
   const recommendations = getRecommendations(books);
+
+  const mostReadGenre =
+  books.length > 0 //if there are books, calculate the most read genre
+    ? Object.entries( // count the occurrences of each genre
+        books.reduce((acc, b) => {
+          if (b.genre) acc[b.genre] = (acc[b.genre] ?? 0) + 1; // increment the count for this genre
+          return acc; 
+        }, {} as Record<string, number>) 
+      ).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—'
+    : '—'; // else, if there are no books, return a dash
+
+  const mostLovedBook = books.length > 0 // if there are books, find the one with the highest rating
+      ? books.reduce((maxb, b) => (b.rating && b.rating > (maxb.rating ?? 0) ? b : maxb), books[0])
+      : null;
+
+  const stats = [
+    { icon: '📖', value: totalBooks,   label: 'Books Read',    bg: colors.statCard1 },
+    { icon: '📚', value: seriesCount,  label: 'Series',        bg: colors.statCard2 },
+    { icon: '⭐', value: avgRating,    label: 'Avg Rating',    bg: colors.statCard3 },
+    { icon: '🏆', value: mostReadGenre, label: 'Most Read Genre', bg: colors.statCard4 },
+    { icon: '❤️', value: mostLovedBook ? mostLovedBook.title : '—', label: 'Most Loved Book', bg: colors.statCard5 },
+
+  ];
 
   return (
     <View style={styles.wrapper}>
@@ -73,23 +96,27 @@ export default function HomeScreen() {
         </LinearGradient>
 
         {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: colors.statCard1 }]}>
-            <Text style={styles.statIcon}>📖</Text>
-            <Text style={styles.statNumber}>{totalBooks}</Text>
-            <Text style={styles.statLabel}>Books Read</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: colors.statCard2 }]}>
-            <Text style={styles.statIcon}>📚</Text>
-            <Text style={styles.statNumber}>{seriesCount}</Text>
-            <Text style={styles.statLabel}>Series</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: colors.statCard3 }]}>
-            <Text style={styles.statIcon}>⭐</Text>
-            <Text style={styles.statNumber}>{avgRating}</Text>
-            <Text style={styles.statLabel}>Avg Rating</Text>
-          </View>
-        </View>
+        <FlatList
+          data={stats}
+          keyExtractor={item => item.label}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={160}          // card width + gap
+          decelerationRate="fast"
+          snapToAlignment="start"
+          contentContainerStyle={{ paddingHorizontal: 10, gap: 10, marginTop: 40, marginBottom: 10 }}
+          renderItem={({ item }) => (
+            <View style={[styles.statCard, { backgroundColor: item.bg, width: 150 }]}>
+              <Text style={styles.statIcon}>{item.icon}</Text>
+              <Text style={[styles.statNumber, typeof item.value === 'string' && item.value.length > 10 && { fontSize: 16 }]}
+                numberOfLines={2}
+                adjustsFontSizeToFit>
+                {item.value}
+              </Text>
+              <Text style={styles.statLabel}>{item.label}</Text>
+            </View>
+          )} 
+          />
 
         {/* Section: Recently Read */}
         <View style={styles.sectionDivider} />
@@ -207,18 +234,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   //  Stats 
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    gap: 10,
-    marginTop: 22,
-    marginBottom: 28,
-  },
   statCard: {
     flex: 1,
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'space-between',  // add this
+    height: 110,                       // add this
     borderWidth: 1,
     borderColor: colors.border,
     shadowColor: '#000',
@@ -266,9 +288,9 @@ const styles = StyleSheet.create({
   sectionDivider: {
     marginHorizontal: 40,
     marginVertical: 24,
-    height: 1,
+    height: 2,
     backgroundColor: colors.border,
-    opacity: 0.6,
+    opacity: 1,
   },
   //  Book lists 
   loadingContainer: {
@@ -279,7 +301,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   bookList: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 10,
     paddingBottom: 8,
   },
   //  Floating Dragon FAB 

@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function BookCard({ book }: Props) {
-  const stars = book.rating ? Math.round(book.rating) : 0;
+  const stars = book.rating ? Math.floor(book.rating) : 0;
   const coverUrl = book.isbn
     ? `https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`
     : null;
@@ -84,6 +84,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: colors.primaryText,
     marginBottom: 3,
+    
   },
   author: {
     fontSize: 11,
