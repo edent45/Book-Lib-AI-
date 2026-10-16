@@ -25,3 +25,19 @@ export async function updateSeriesProgress(seriesTitle: string, status: string):
   });
   if (!res.ok) throw new Error('Series not found');
 }
+
+export interface BookSearchResult {
+  title: string;
+  author: string;
+  published_date: string | null;
+  genre: string | null;
+  isbn: string | null;
+  cover: string | null;       // thumbnail URL (not base64)
+  description: string;
+}
+
+export async function searchBooks(q: string): Promise<BookSearchResult[]> {
+  const res = await fetch(`${BASE_URL}/search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error('Search failed');
+  return res.json();
+}

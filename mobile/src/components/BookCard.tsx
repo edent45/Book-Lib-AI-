@@ -9,9 +9,10 @@ interface Props {
 
 export default function BookCard({ book }: Props) {
   const stars = book.rating ? Math.floor(book.rating) : 0;
-  const coverUrl = book.isbn
+  const coverUrl = book.cover_url
+  ?? (book.isbn
     ? `https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`
-    : null;
+    : null);
 
   const starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
 

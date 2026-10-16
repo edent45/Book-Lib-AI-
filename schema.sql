@@ -55,6 +55,7 @@ CREATE TABLE Books (
     notes TEXT,
     isbn TEXT,
     cover_image BLOB,
+    cover_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (author_id) REFERENCES Authors(id) ON DELETE SET NULL,
@@ -113,6 +114,7 @@ FOR EACH ROW
 BEGIN
     UPDATE Books SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
+
 
 
 

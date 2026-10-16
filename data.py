@@ -46,6 +46,7 @@ def add_book(
     notes: str | None = None,
     isbn: str | None = None,
     cover_image: bytes | None = None,
+    cover_url: str | None = None,
 ):
     con = connect()
     cur = con.cursor()
@@ -71,9 +72,9 @@ def add_book(
     cur.execute(
         """
         INSERT INTO Books
-            (id, title, author_id, series_id, genre_id, language, published_date, read_year, rating, notes, isbn, cover_image)
+            (id, title, author_id, series_id, genre_id, language, published_date, read_year, rating, notes, isbn, cover_image, cover_url)
         VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             book_id,
@@ -88,6 +89,7 @@ def add_book(
             notes,
             isbn,
             cover_image,
+            cover_url,
         ),
     )
 
@@ -128,6 +130,7 @@ def list_books():
           b.rating,
           b.isbn,
           b.cover_image,
+          b.cover_url,
           GROUP_CONCAT(t.name, ', ') AS tags
         FROM Books b
         LEFT JOIN Authors a ON a.id = b.author_id
@@ -156,7 +159,8 @@ def list_books():
             "rating": row[9],
             "isbn": row[10],
             "cover_image": row[11],
-            "tags": row[12],
+            "cover_url": row[12],
+            "tags": row[13],
         })
         
         """print({

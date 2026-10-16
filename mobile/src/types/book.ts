@@ -11,5 +11,7 @@ export interface Book {
   rating: number | null;
   isbn: string | null;
   cover_image: string | null; // base64 string
+  cover_url: string | null;
+  notes: string | null;
   tags: string | null;
 }

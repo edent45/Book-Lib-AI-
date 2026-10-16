@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useCallback, useState } from 'react';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -10,7 +11,6 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
-import { useNavigation } from '@react-navigation/native';
 import { getBooks } from '../api/books';
 import BookCard from '../components/BookCard';
 import { Book } from '../types/book';
@@ -19,26 +19,31 @@ import { colors, fonts } from '../theme';
 
 // Mock data shown when the backend is not reachable yet
 const MOCK_BOOKS: Book[] = [
-  { id: '1', title: 'The Way of Kings', author: 'Brandon Sanderson', genre: 'Fantasy', series: 'Stormlight Archive', position: 1, language: 'English', published_date: '2010-08-31', read_year: 2023, rating: 5, isbn: '9780765326355', cover_image: null, tags: 'epic, magic' },
-  { id: '2', title: 'A Game of Thrones', author: 'George R.R. Martin', genre: 'Fantasy', series: 'ASOIAF', position: 1, language: 'English', published_date: '1996-08-06', read_year: 2022, rating: 5, isbn: '9780553103540', cover_image: null, tags: 'epic' },
-  { id: '3', title: '1Q84', author: 'Haruki Murakami', genre: 'Mystery', series: null, position: null, language: 'Japanese', published_date: '2009-05-29', read_year: 2021, rating: 4, isbn: '9780307593313', cover_image: null, tags: null },
-  { id: '4', title: 'The Hobbit', author: 'J.R.R. Tolkien', genre: 'Fantasy', series: null, position: null, language: 'English', published_date: '1937-09-21', read_year: 2020, rating: 5, isbn: '9780547928227', cover_image: null, tags: null },
-  { id: '5', title: 'The Name of the Wind', author: 'Patrick Rothfuss', genre: 'Fantasy', series: 'The Kingkiller Chronicle', position: 1, language: 'English', published_date: '2007-03-27', read_year: 2023, rating: 5, isbn: '9780756404741', cover_image: null, tags: null },
-  { id: '6', title: 'The Catcher in the Rye', author: 'J.D. Salinger', genre: 'Fiction', series: null, position: null, language: 'English', published_date: '1951-07-16', read_year: 2022, rating: 4, isbn: '9780316769488', cover_image: null, tags: null },
-  { id: '7', title: 'To Kill a Mockingbird', author: 'Harper Lee', genre: 'Fiction', series: null, position: null, language: 'English', published_date: '1960-07-11', read_year: 2021, rating: 5, isbn: '9780061120084', cover_image: null, tags: null },
+  { id: '1', title: 'The Way of Kings', author: 'Brandon Sanderson', genre: 'Fantasy', series: 'Stormlight Archive', position: 1, language: 'English', published_date: '2010-08-31', read_year: 2023, rating: 5, isbn: '9780765326355', cover_image: null, cover_url: null, notes: null, tags: 'epic, magic' },
+  { id: '2', title: 'A Game of Thrones', author: 'George R.R. Martin', genre: 'Fantasy', series: 'ASOIAF', position: 1, language: 'English', published_date: '1996-08-06', read_year: 2022, rating: 5, isbn: '9780553103540', cover_image: null, cover_url: null, notes: null, tags: 'epic' },
+  { id: '3', title: '1Q84', author: 'Haruki Murakami', genre: 'Mystery', series: null, position: null, language: 'Japanese', published_date: '2009-05-29', read_year: 2021, rating: 4, isbn: '9780307593313', cover_image: null, cover_url: null, notes: null, tags: null },
+  { id: '4', title: 'The Hobbit', author: 'J.R.R. Tolkien', genre: 'Fantasy', series: null, position: null, language: 'English', published_date: '1937-09-21', read_year: 2020, rating: 5, isbn: '9780547928227', cover_image: null, cover_url: null, notes: null, tags: null },
+  { id: '5', title: 'The Name of the Wind', author: 'Patrick Rothfuss', genre: 'Fantasy', series: 'The Kingkiller Chronicle', position: 1, language: 'English', published_date: '2007-03-27', read_year: 2023, rating: 5, isbn: '9780756404741', cover_image: null, cover_url: null, notes: null, tags: null },
+  { id: '6', title: 'The Catcher in the Rye', author: 'J.D. Salinger', genre: 'Fiction', series: null, position: null, language: 'English', published_date: '1951-07-16', read_year: 2022, rating: 4, isbn: '9780316769488', cover_image: null, cover_url: null, notes: null, tags: null },
+  { id: '7', title: 'To Kill a Mockingbird', author: 'Harper Lee', genre: 'Fiction', series: null, position: null, language: 'English', published_date: '1960-07-11', read_year: 2021, rating: 5, isbn: '9780061120084', cover_image: null, cover_url: null, notes: null, tags: null },
 ];
+
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+useFocusEffect(
+  useCallback(() => {
+    setLoading(true);
+
     getBooks()
-      .then(setBooks)
+      .then(data => setBooks(data.length > 0 ? data : MOCK_BOOKS))
       .catch(() => setBooks(MOCK_BOOKS))
       .finally(() => setLoading(false));
-  }, []);
+  }, [])
+);
 
   const totalBooks = books.length;
   const rated = books.filter(b => b.rating !== null);
