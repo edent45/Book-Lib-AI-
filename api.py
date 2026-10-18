@@ -106,6 +106,38 @@ def update_notes(book_id: str, body: NotesUpdate):
     return result
 
 
+#----edit book / delete bbook ---
+@app.put("/books/{book_id}")
+def edit_book(book_id: str, book: Book):
+    cover_image_bytes = base64.b64decode(book.cover_image) if book.cover_image else None
+    result = data.update_book(
+        book_id=book_id,
+        title=book.title,
+        author=book.author,
+        genre=book.genre,
+        series=book.series,
+        position=book.position,
+        tags=book.tags,
+        language=book.language,
+        published_date=book.published_date,
+        read_year=book.read_year,
+        rating=book.rating,
+        notes=book.notes,
+        isbn=book.isbn,
+        cover_image=cover_image_bytes,
+        cover_url=book.cover_url
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return result
+
+@app.delete("/books/{book_id}")
+def delete_book(book_id: str):
+    result = data.delete_book(book_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return result
+
 #--- Search books by title ---
 @app.get("/search")
 async def search_books(q: str):

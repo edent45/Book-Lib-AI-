@@ -236,6 +236,41 @@ def set_book_notes(book_id: str, notes: str | None):
         return
     return {"book_id": book_id, "notes": notes}
 
+def update_book(book_id: str, title: str, author: str, genre: str | None = None, series: str | None = None,
+                position: int | None = None, tags: str | None = None, language: str | None = None,
+                published_date: str | None = None, read_year: int | None = None, rating: float | None = None,
+                notes: str | None = None, isbn: str | None = None, cover_image: bytes | None = None,
+                cover_url: str | None = None):
+    con = connect()
+    cur = con.cursor()
+    cur.execute("""
+        UPDATE Books
+        SET title = ?, author = ?, genre = ?, series = ?, position = ?, tags = ?, language = ?, published_date = ?,
+            read_year = ?, rating = ?, notes = ?, isbn = ?, cover_image = ?, cover_url = ?
+        WHERE id = ?
+    """, (title, author, genre, series, position, tags, language, published_date, read_year, rating, notes, isbn,
+          cover_image, cover_url, book_id))
+    con.commit()
+    updated = cur.rowcount
+    con.close()
+    if not updated:
+        return
+    return {"book_id": book_id, "title": title, "author": author, "genre": genre, "series": series, "position": position,
+            "tags": tags, "language": language, "published_date": published_date, "read_year": read_year,
+            "rating": rating, "notes": notes, "isbn": isbn, "cover_image": cover_image, "cover_url": cover_url}
+
+
+def delete_book(book_id: str):
+    con = connect()
+    cur = con.cursor()
+    cur.execute("DELETE FROM Books WHERE id = ?", (book_id,))
+    con.commit()
+    deleted = cur.rowcount
+    con.close()
+    if not deleted:
+        return
+    return {"book_id": book_id}
+
 
 
 if __name__ == "__main__":

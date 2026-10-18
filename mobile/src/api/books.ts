@@ -60,3 +60,20 @@ export async function updateNotes(bookId: string, notes: string): Promise<void> 
   });
   if (!res.ok) throw new Error('Failed to update notes');
 }
+
+export async function updateBook(bookId: string, book: Book): Promise<void> {
+  const res = await fetch(`${BASE_URL}/books/${encodeURIComponent(bookId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(book),
+  });
+
+  if (!res.ok) throw new Error('Failed to update book');
+}
+
+export async function deleteBook(bookId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/books/${encodeURIComponent(bookId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete book');
+}

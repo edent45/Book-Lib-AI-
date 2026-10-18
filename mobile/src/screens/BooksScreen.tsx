@@ -1,11 +1,12 @@
 import React, {useCallback,useState} from 'react';
 import { View, Text, ScrollView, TouchableOpacity,
   StyleSheet, ActivityIndicator, Dimensions, Modal,
-  useWindowDimensions, Image, TextInput} from 'react-native';
+  useWindowDimensions, Image, TextInput, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
-import { getBooks , updateRating, updateNotes } from '../api/books';
+import { getBooks , updateRating, updateNotes, updateBook, deleteBook } from '../api/books';
 import { Book } from '../types/book';
+import  BookEditForm ,  {type BookChanges} from '../components/BookEditForm';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const BOOKS_PER_SHELF = 7;
@@ -148,6 +149,7 @@ export default function BooksScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Book | null>(null);
   const {height} = useWindowDimensions();
+  const [editing, setEditing] = useState(false);
 
   const handleRate = (book: Book, rating: number) => {
     const prev = book.rating ?? 0;
@@ -170,6 +172,25 @@ export default function BooksScreen() {
     updateNotes(book.id, notes).catch(e => { console.warn('notes save failed', e); apply(prev); });
   };
 
+  const handleDelete = (book: Book) => {
+    Alert.alert('Delete book', `Delete "${book.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteBook(book.id);
+            setBooks(bs => bs.filter(b => b.id !== book.id));
+            setSelected(null);
+            setEditing(false);
+          } catch {
+            Alert.alert('Error', 'Could not delete the book.');
+          }
+        },
+      },
+    ]);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -230,7 +251,6 @@ export default function BooksScreen() {
                   key={book.id}
                   book={book}
                   onPress={() => {
-                    // TODO: navigate to BookDetailScreen
                     //console.log('tapped', book.title);
                     setSelected(book);
                   }}
@@ -244,61 +264,152 @@ export default function BooksScreen() {
 
       <Text style={styles.count}>{books.length} books</Text>
       {/* Book detail modal */}
-      <Modal visible={selected !== null} animationType="slide" onRequestClose={() => setSelected(null)}>
-        {selected && (() => {
-          const cover = selected.cover_url
-            ?? (selected.isbn ? `https://covers.openlibrary.org/b/isbn/${selected.isbn}-L.jpg` : null);
-          const pills = [selected.genre, ...(selected.tags?.split(',').map(t => t.trim()) ?? [])].filter(Boolean) as string[];
-          return (
-            <View style={styles.detailRoot}>
-              {/* top half: cover */}
-              <View style={[styles.hero, { height: height * 0.5 }]}>
-                <TouchableOpacity style={styles.backBtn} onPress={() => setSelected(null)}>
-                  <Text style={styles.backIcon}>‹</Text>
-                </TouchableOpacity>
-                {cover
-                  ? <Image source={{ uri: cover }} style={styles.heroCover} />
-                  : selected.cover_image
-                    ? <Image source={{ uri: `data:image/jpeg;base64,${selected.cover_image}` }} style={styles.heroCover} />
-                    : <View style={[styles.heroCover, styles.heroPlaceholder]}><Text style={{ fontSize: 64 }}>📖</Text></View>}
-                <Text style={styles.heroTitle} numberOfLines={2}>{selected.title}</Text>
-                <Text style={styles.heroAuthor}>{selected.author}</Text>
-              </View>
+      <Modal
+          visible={selected !== null}
+          animationType="slide"
+          onRequestClose={() => {
+            setEditing(false);
+            setSelected(null);
+          }}
+        >
+          {selected && (
+            editing ? (
+              <BookEditForm
+                book={selected}
+                onCancel={() => setEditing(false)}
+                onSave={async (changes: BookChanges) => {
+                  const updatedBook = { ...selected, ...changes };
 
-              {/* bottom: dark sheet */}
-              <ScrollView style={styles.sheet} contentContainerStyle={{ padding: 20 }}>
-                <View style={styles.statsRow}>
-                  <View style={styles.stat}>
-                    <Stars rating={selected.rating} onChange={r => handleRate(selected, r)} />
-                    <Text style={styles.statLabel}>Rating</Text>
-                  </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.stat}>
-                    <Text style={styles.statValue}>{selected.read_year ?? '—'}</Text>
-                    <Text style={styles.statLabel}>Read</Text>
-                  </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.stat}>
-                    <Text style={styles.statValue}>{selected.language ?? '—'}</Text>
-                    <Text style={styles.statLabel}>Language</Text>
-                  </View>
-                </View>
+                  await updateBook(selected.id, updatedBook);
 
-                <View style={styles.pillRow}>
-                  {pills.map(p => <View key={p} style={styles.pill}><Text style={styles.pillText}>{p}</Text></View>)}
-                </View>
+                  setBooks(current =>
+                    current.map(book =>
+                      book.id === updatedBook.id ? updatedBook : book
+                    )
+                  );
+                  setSelected(updatedBook);
+                  setEditing(false);
+                }}
+              />
+            ) : (
+              (() => {
+                const cover = selected.cover_url
+                  ?? (selected.isbn
+                    ? `https://covers.openlibrary.org/b/isbn/${selected.isbn}-L.jpg`
+                    : null);
+                const pills = [
+                  selected.genre,
+                  ...(selected.tags?.split(',').map(tag => tag.trim()) ?? []),
+                ].filter(Boolean) as string[];
 
-                {selected.series && (
-                  <Text style={styles.sectionBody}>
-                    {selected.series}{selected.position ? ` · #${selected.position}` : ''}
-                  </Text>
-                )}
-                <NotesEditor key={selected.id} book={selected} onSave={n => handleNotes(selected, n)} />
-              </ScrollView>
-            </View>
-          );
-        })()}
-      </Modal>
+                return (
+                  <View style={styles.detailRoot}>
+                    <View style={[styles.hero, { height: height * 0.5 }]}>
+                      <TouchableOpacity
+                        style={styles.backBtn}
+                        onPress={() => setSelected(null)}
+                      >
+                        <Text style={styles.backIcon}>‹</Text>
+                      </TouchableOpacity>
+
+                      {cover ? (
+                        <Image source={{ uri: cover }} style={styles.heroCover} />
+                      ) : selected.cover_image ? (
+                        <Image
+                          source={{
+                            uri: `data:image/jpeg;base64,${selected.cover_image}`,
+                          }}
+                          style={styles.heroCover}
+                        />
+                      ) : (
+                        <View style={[styles.heroCover, styles.heroPlaceholder]}>
+                          <Text style={{ fontSize: 64 }}>📖</Text>
+                        </View>
+                      )}
+
+                      <Text style={styles.heroTitle} numberOfLines={2}>
+                        {selected.title}
+                      </Text>
+                      <Text style={styles.heroAuthor}>{selected.author}</Text>
+                    </View>
+
+                    <ScrollView
+                      style={styles.sheet}
+                      contentContainerStyle={{ padding: 20 }}
+                    >
+                      <View style={styles.statsRow}>
+                        <View style={styles.stat}>
+                          <Stars
+                            rating={selected.rating}
+                            onChange={rating => handleRate(selected, rating)}
+                          />
+                          <Text style={styles.statLabel}>Rating</Text>
+                        </View>
+
+                        <View style={styles.statDivider} />
+
+                        <View style={styles.stat}>
+                          <Text style={styles.statValue}>
+                            {selected.read_year ?? '—'}
+                          </Text>
+                          <Text style={styles.statLabel}>Read</Text>
+                        </View>
+
+                        <View style={styles.statDivider} />
+
+                        <View style={styles.stat}>
+                          <Text style={styles.statValue}>
+                            {selected.language ?? '—'}
+                          </Text>
+                          <Text style={styles.statLabel}>Language</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.pillRow}>
+                        {pills.map(pill => (
+                          <View key={pill} style={styles.pill}>
+                            <Text style={styles.pillText}>{pill}</Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      {selected.series && (
+                        <Text style={styles.sectionBody}>
+                          {selected.series}
+                          {selected.position ? ` · #${selected.position}` : ''}
+                        </Text>
+                      )}
+
+                      <NotesEditor
+                        key={selected.id}
+                        book={selected}
+                        onSave={notes => handleNotes(selected, notes)}
+                      />
+
+                       <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.editBtn]}
+                          onPress={() => setEditing(true)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.actionText}>✏️  Edit</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.deleteBtn]}
+                          onPress={() => handleDelete(selected)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.actionText, styles.deleteText]}>🗑️  Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </ScrollView>
+                  </View>
+                );
+              })()
+            )
+          )}
+        </Modal>
     </ScrollView>
   );
 }
@@ -452,5 +563,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a', color: '#fff', borderRadius: 14, padding: 14,
     minHeight: 120, fontSize: 14, fontFamily: fonts.regular, marginBottom: 24,
   },
+
+  actionRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+actionBtn: {
+  flex: 1,
+  paddingVertical: 14,
+  borderRadius: 14,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+editBtn: { backgroundColor: colors.accentPurple },
+deleteBtn: {
+  backgroundColor: 'rgba(255,107,107,0.12)',
+  borderWidth: 1,
+  borderColor: '#ff6b6b',
+},
+actionText: { color: '#fff', fontSize: 15, fontFamily: fonts.semiBold },
+deleteText: { color: '#ff6b6b' },
+
 });
 
