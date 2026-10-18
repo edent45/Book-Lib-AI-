@@ -131,7 +131,8 @@ def list_books():
           b.isbn,
           b.cover_image,
           b.cover_url,
-          GROUP_CONCAT(t.name, ', ') AS tags
+          GROUP_CONCAT(t.name, ', ') AS tags,
+          b.notes 
         FROM Books b
         LEFT JOIN Authors a ON a.id = b.author_id
         LEFT JOIN Genres g ON g.id = b.genre_id
@@ -161,6 +162,7 @@ def list_books():
             "cover_image": row[11],
             "cover_url": row[12],
             "tags": row[13],
+            "notes": row[14],
         })
         
         """print({
@@ -211,6 +213,28 @@ def set_series_progress(series_title: str, status: str):
     #print(f"Series '{series_title}' progress set to '{status}'.")
     return dict_status
     
+def set_book_rating(book_id: str, rating: float):
+    con = connect()
+    cur = con.cursor()
+    cur.execute("UPDATE Books SET rating = ? WHERE id = ?", (rating, book_id))
+    con.commit()
+    updated = cur.rowcount
+    con.close()
+    if not updated:
+        print(f"Book with ID '{book_id}' not found.")
+        return
+    return {"book_id": book_id, "rating": rating}
+
+def set_book_notes(book_id: str, notes: str | None):
+    con = connect()
+    cur = con.cursor()
+    cur.execute("UPDATE Books SET notes = ? WHERE id = ?", (notes, book_id))
+    con.commit()
+    updated = cur.rowcount
+    con.close()
+    if not updated:
+        return
+    return {"book_id": book_id, "notes": notes}
 
 
 

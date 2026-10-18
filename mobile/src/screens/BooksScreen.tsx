@@ -1,9 +1,10 @@
 import React, {useCallback,useState} from 'react';
 import { View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Dimensions,} from 'react-native';
+  StyleSheet, ActivityIndicator, Dimensions, Modal,
+  useWindowDimensions, Image, TextInput} from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
-import { getBooks } from '../api/books';
+import { getBooks , updateRating, updateNotes } from '../api/books';
 import { Book } from '../types/book';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -105,11 +106,70 @@ function ShelfPlank() {
   return <View style={styles.plank} />;
 }
 
+
+// ── function helper - star rating ──────────────────────────────────────────────────────────────
+function Stars({ rating, onChange }: { rating: number | null; onChange: (r: number) => void }) {
+  const r = Math.round(rating ?? 0);
+  return (
+    <View style={{ flexDirection: 'row' }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <TouchableOpacity key={n} onPress={() => onChange(n === r ? 0 : n)} hitSlop={6}>
+          <Text style={[styles.stars, n > r && styles.starsEmpty]}>★</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// ── function helper - update notes ──────────────────────────────────────────────
+function NotesEditor({ book, onSave }: { book: Book; onSave: (n: string) => void }) {
+  const [text, setText] = useState(book.notes ?? '');
+  return (
+    <>
+      <Text style={styles.sectionTitle}>My Notes</Text>
+      <TextInput
+        style={styles.notesInput}
+        value={text}
+        onChangeText={setText}
+        onBlur={() => text !== (book.notes ?? '') && onSave(text)}  // save when focus leaves
+        placeholder="Write your thoughts about this book…"
+        placeholderTextColor="#666"
+        multiline
+        textAlignVertical="top"
+      />
+    </>
+  );
+}
+
 // ── BooksScreen ──────────────────────────────────────────────────────────────
 export default function BooksScreen() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Book | null>(null);
+  const {height} = useWindowDimensions();
+
+  const handleRate = (book: Book, rating: number) => {
+    const prev = book.rating ?? 0;
+    const apply = (r:number | null ) => {
+      setBooks(bs => bs.map(b=> (b.id == book.id ? {...b, rating: r} : b))); 
+      setSelected(s => (s && s.id === book.id ? { ...s, rating: r } : s));
+    };
+    console.warn(`Updating rating for book ID ${book.id} from ${prev} to ${rating}`);
+    apply(rating);
+    updateRating(book.id, rating).catch(() => apply(prev));
+  };
+
+  const handleNotes = (book: Book, notes: string) => {
+    const prev = book.notes;
+    const apply = (n: string | null) => {
+      setBooks(bs => bs.map(b => (b.id === book.id ? { ...b, notes: n } : b)));
+      setSelected(s => (s && s.id === book.id ? { ...s, notes: n } : s));
+    };
+    apply(notes);
+    updateNotes(book.id, notes).catch(e => { console.warn('notes save failed', e); apply(prev); });
+  };
+
 
   useFocusEffect(
     useCallback(() => {
@@ -171,7 +231,8 @@ export default function BooksScreen() {
                   book={book}
                   onPress={() => {
                     // TODO: navigate to BookDetailScreen
-                    console.log('tapped', book.title);
+                    //console.log('tapped', book.title);
+                    setSelected(book);
                   }}
                 />
               ))}
@@ -182,6 +243,62 @@ export default function BooksScreen() {
       </View>
 
       <Text style={styles.count}>{books.length} books</Text>
+      {/* Book detail modal */}
+      <Modal visible={selected !== null} animationType="slide" onRequestClose={() => setSelected(null)}>
+        {selected && (() => {
+          const cover = selected.cover_url
+            ?? (selected.isbn ? `https://covers.openlibrary.org/b/isbn/${selected.isbn}-L.jpg` : null);
+          const pills = [selected.genre, ...(selected.tags?.split(',').map(t => t.trim()) ?? [])].filter(Boolean) as string[];
+          return (
+            <View style={styles.detailRoot}>
+              {/* top half: cover */}
+              <View style={[styles.hero, { height: height * 0.5 }]}>
+                <TouchableOpacity style={styles.backBtn} onPress={() => setSelected(null)}>
+                  <Text style={styles.backIcon}>‹</Text>
+                </TouchableOpacity>
+                {cover
+                  ? <Image source={{ uri: cover }} style={styles.heroCover} />
+                  : selected.cover_image
+                    ? <Image source={{ uri: `data:image/jpeg;base64,${selected.cover_image}` }} style={styles.heroCover} />
+                    : <View style={[styles.heroCover, styles.heroPlaceholder]}><Text style={{ fontSize: 64 }}>📖</Text></View>}
+                <Text style={styles.heroTitle} numberOfLines={2}>{selected.title}</Text>
+                <Text style={styles.heroAuthor}>{selected.author}</Text>
+              </View>
+
+              {/* bottom: dark sheet */}
+              <ScrollView style={styles.sheet} contentContainerStyle={{ padding: 20 }}>
+                <View style={styles.statsRow}>
+                  <View style={styles.stat}>
+                    <Stars rating={selected.rating} onChange={r => handleRate(selected, r)} />
+                    <Text style={styles.statLabel}>Rating</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.stat}>
+                    <Text style={styles.statValue}>{selected.read_year ?? '—'}</Text>
+                    <Text style={styles.statLabel}>Read</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.stat}>
+                    <Text style={styles.statValue}>{selected.language ?? '—'}</Text>
+                    <Text style={styles.statLabel}>Language</Text>
+                  </View>
+                </View>
+
+                <View style={styles.pillRow}>
+                  {pills.map(p => <View key={p} style={styles.pill}><Text style={styles.pillText}>{p}</Text></View>)}
+                </View>
+
+                {selected.series && (
+                  <Text style={styles.sectionBody}>
+                    {selected.series}{selected.position ? ` · #${selected.position}` : ''}
+                  </Text>
+                )}
+                <NotesEditor key={selected.id} book={selected} onSave={n => handleNotes(selected, n)} />
+              </ScrollView>
+            </View>
+          );
+        })()}
+      </Modal>
     </ScrollView>
   );
 }
@@ -289,6 +406,51 @@ const styles = StyleSheet.create({
     color: colors.mutedText,
     textAlign: 'center',
     marginTop: 16,
+  },
+
+  // Modal backdrop and panel (for the book details)
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+    panel: {
+      backgroundColor: colors.cardBg,
+      borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      padding: 20, maxHeight: '70%',
+      borderWidth: 1, borderColor: colors.border,
+    },
+  modalTitle: { fontSize: 20, fontFamily: fonts.bold, color: colors.primaryText },
+  modalAuthor: { fontSize: 14, fontFamily: fonts.regular, color: colors.subText, marginBottom: 12 },
+  modalMeta: { fontSize: 13, fontFamily: fonts.regular, color: colors.primaryText, marginBottom: 4 },
+  modalNotes: { fontSize: 13, fontFamily: fonts.regular, color: colors.subText, marginTop: 10 },
+  closeBtn: { marginTop: 16, backgroundColor: colors.accentPurple, borderRadius: 10, padding: 12, alignItems: 'center' },
+  closeText: { color: '#fff', fontFamily: fonts.semiBold },
+  detailRoot: { flex: 1, backgroundColor: '#7a4a1e' },   // or derive from spineColor(selected.genre, selected.title)
+  hero: { alignItems: 'center', justifyContent: 'center', paddingTop: 40 },
+  backBtn: { position: 'absolute', top: 40, left: 20, width: 44, height: 44, borderRadius: 22,
+            backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  backIcon: { color: '#fff', fontSize: 28, marginTop: -3 },
+  heroCover: { width: 170, height: 250, borderRadius: 10, resizeMode: 'cover' },
+  heroPlaceholder: { backgroundColor: '#2a1a3e', alignItems: 'center', justifyContent: 'center' },
+  heroTitle: { color: '#fff', fontSize: 18, fontFamily: fonts.bold, marginTop: 16, paddingHorizontal: 20, textAlign: 'center' },
+  heroAuthor: { color: 'rgba(255,255,255,0.85)', fontSize: 15, fontFamily: fonts.regular, marginTop: 4 },
+
+  sheet: { flex: 1, backgroundColor: '#0f0f0f', borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  statsRow: { flexDirection: 'row', backgroundColor: '#1a1a1a', borderRadius: 20, paddingVertical: 16, marginBottom: 16 },
+  stat: { flex: 1, alignItems: 'center' },
+  statValue: { color: '#fff', fontSize: 18, fontFamily: fonts.bold },
+  statSub: { color: '#888', fontSize: 12 },
+  statLabel: { color: '#aaa', fontSize: 13, fontFamily: fonts.regular, marginTop: 2 },
+  statDivider: { width: 1, backgroundColor: '#333' },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 20 },
+  pill: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 },
+  pillText: { color: '#111', fontSize: 13, fontFamily: fonts.semiBold },
+  sectionTitle: { color: '#fff', fontSize: 18, fontFamily: fonts.bold, marginBottom: 8 },
+  sectionBody: { color: '#aaa', fontSize: 14, lineHeight: 21, fontFamily: fonts.regular, marginBottom: 12 },
+
+  stars: { color: '#FFC83D', fontSize: 22, paddingHorizontal: 2 },
+  starsEmpty: { color: '#444' },
+
+  notesInput: {
+    backgroundColor: '#1a1a1a', color: '#fff', borderRadius: 14, padding: 14,
+    minHeight: 120, fontSize: 14, fontFamily: fonts.regular, marginBottom: 24,
   },
 });
 

@@ -80,6 +80,32 @@ def update_series_progress(series_title: str, body: SeriesProgress):
         raise HTTPException(status_code=404, detail="Series not found")
     return result
 
+
+#--- Update book rating ---
+class RatingUpdate(BaseModel):
+    rating: float
+
+@app.put("/books/{book_id}/rating")
+def update_rating(book_id: str, body: RatingUpdate):
+    if not 0 <= body.rating <= 5:
+        raise HTTPException(status_code=400, detail="Rating must be 0-5")
+    result = data.set_book_rating(book_id, body.rating)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return result
+
+#--- Update book notes ---
+class NotesUpdate(BaseModel):
+    notes: str | None = None
+
+@app.put("/books/{book_id}/notes")
+def update_notes(book_id: str, body: NotesUpdate):
+    result = data.set_book_notes(book_id, body.notes)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return result
+
+
 #--- Search books by title ---
 @app.get("/search")
 async def search_books(q: str):

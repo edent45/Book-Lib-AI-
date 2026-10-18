@@ -41,3 +41,22 @@ export async function searchBooks(q: string): Promise<BookSearchResult[]> {
   if (!res.ok) throw new Error('Search failed');
   return res.json();
 }
+
+export async function updateRating(bookId: string, rating: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/books/${encodeURIComponent(bookId)}/rating`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating }),
+  });
+  if (!res.ok) throw new Error('Failed to update rating');
+}
+
+
+export async function updateNotes(bookId: string, notes: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/books/${encodeURIComponent(bookId)}/notes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+  });
+  if (!res.ok) throw new Error('Failed to update notes');
+}
