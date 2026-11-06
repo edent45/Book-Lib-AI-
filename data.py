@@ -37,6 +37,30 @@ def get_or_create_id_by_name(con: sqlite3.Connection, table: str, name: str) -> 
     cur.execute(f"INSERT INTO {table} (id, name) VALUES (?, ?)", (new_id, name))
     return new_id
 
+
+def get_or_create_series_id(con: sqlite3.Connection, title: str, author_id: str) -> str:
+    row = con.execute("SELECT id FROM Series WHERE title = ?", (title,)).fetchone()
+    if row:
+        return row[0]
+    series_id = uid()
+    con.execute(
+        "INSERT INTO Series (id, title, author_id, status, notes) VALUES (?, ?, ?, ?, ?)",
+        (series_id, title, author_id, None, None),
+    )
+    return series_id
+
+
+def set_book_tags(con: sqlite3.Connection, book_id: str, tags: str | None):
+    con.execute("DELETE FROM BookTags WHERE book_id = ?", (book_id,))
+    if tags:
+        for tag in [value.strip() for value in tags.split(",") if value.strip()]:
+            tag_id = get_or_create_id_by_name(con, "tags", tag)
+            con.execute(
+                "INSERT OR IGNORE INTO BookTags (book_id, tag_id) VALUES (?, ?)",
+                (book_id, tag_id),
+            )
+
+
 def add_author(name: str, country: str | None = None):
     con = connect()
     cur = con.cursor()
@@ -71,16 +95,7 @@ def add_book(
 
     series_id = None
     if series:
-        cur.execute("SELECT id FROM Series WHERE title = ?", (series,))
-        r = cur.fetchone()
-        if r:
-            series_id = r[0]
-        else:
-            series_id = uid()
-            cur.execute(
-                "INSERT INTO Series (id, title, author_id, status, notes) VALUES (?, ?, ?, ?, ?)",
-                (series_id, series, author_id, None, None),
-            )
+        series_id = get_or_create_series_id(con, series, author_id)
 
     book_id = uid()
     cur.execute(
@@ -113,13 +128,7 @@ def add_book(
             (series_id, book_id, position),
         )
 
-    if tags:
-        for t in [x.strip() for x in tags.split(",") if x.strip()]:
-            tag_id = get_or_create_id_by_name(con, "tags", t)
-            cur.execute(
-                "INSERT OR IGNORE INTO BookTags (book_id, tag_id) VALUES (?, ?)",
-                (book_id, tag_id),
-            )
+    set_book_tags(con, book_id, tags)
 
     con.commit()
     con.close()
@@ -256,19 +265,35 @@ def update_book(book_id: str, title: str, author: str, genre: str | None = None,
                 notes: str | None = None, isbn: str | None = None, cover_image: bytes | None = None,
                 cover_url: str | None = None):
     con = connect()
-    cur = con.cursor()
-    cur.execute("""
-        UPDATE Books
-        SET title = ?, author = ?, genre = ?, series = ?, position = ?, tags = ?, language = ?, published_date = ?,
-            read_year = ?, rating = ?, notes = ?, isbn = ?, cover_image = ?, cover_url = ?
-        WHERE id = ?
-    """, (title, author, genre, series, position, tags, language, published_date, read_year, rating, notes, isbn,
-          cover_image, cover_url, book_id))
-    con.commit()
-    updated = cur.rowcount
-    con.close()
-    if not updated:
-        return
+    try:
+        with con:
+            con.execute("BEGIN")
+            if con.execute("SELECT 1 FROM Books WHERE id = ?", (book_id,)).fetchone() is None:
+                return None
+
+            author_id = get_or_create_id_by_name(con, "Authors", author)
+            genre_id = get_or_create_id_by_name(con, "Genres", genre) if genre else None
+            series_id = get_or_create_series_id(con, series, author_id) if series else None
+
+            con.execute("""
+                UPDATE Books
+                SET title = ?, author_id = ?, genre_id = ?, series_id = ?, language = ?,
+                    published_date = ?, read_year = ?, rating = ?, notes = ?, isbn = ?,
+                    cover_image = ?, cover_url = ?
+                WHERE id = ?
+            """, (title, author_id, genre_id, series_id, language, published_date, read_year,
+                  rating, notes, isbn, cover_image, cover_url, book_id))
+
+            con.execute("DELETE FROM series_books WHERE book_id = ?", (book_id,))
+            if series_id and position is not None:
+                con.execute(
+                    "INSERT INTO series_books (series_id, book_id, position) VALUES (?, ?, ?)",
+                    (series_id, book_id, position),
+                )
+            set_book_tags(con, book_id, tags)
+    finally:
+        con.close()
+
     return {"book_id": book_id, "title": title, "author": author, "genre": genre, "series": series, "position": position,
             "tags": tags, "language": language, "published_date": published_date, "read_year": read_year,
             "rating": rating, "notes": notes, "isbn": isbn, "cover_image": cover_image, "cover_url": cover_url}

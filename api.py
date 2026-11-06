@@ -131,6 +131,8 @@ def edit_book(book_id: str, book: Book):
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Book not found")
+    if result["cover_image"] is not None:
+        result["cover_image"] = base64.b64encode(result["cover_image"]).decode("utf-8")
     return result
 
 @app.delete("/books/{book_id}")
