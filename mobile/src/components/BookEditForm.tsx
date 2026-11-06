@@ -28,7 +28,7 @@ export default function BookEditForm({ book, onCancel, onSave }: Props) {
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author);
   const [genre, setGenre] = useState(book.genre ?? '');
-  const [rating, setRating] = useState(book.rating ?? 0);
+  const [rating, setRating] = useState<number | null>(book.rating);
   const [yearRead, setYearRead] = useState(
     book.read_year == null ? '' : String(book.read_year)
   );
@@ -51,7 +51,7 @@ export default function BookEditForm({ book, onCancel, onSave }: Props) {
         title: title.trim(),
         author: author.trim(),
         genre: genre.trim() || null,
-        rating: rating || null,
+        rating,
         read_year: yearRead ? Number(yearRead) : null,
         language: language.trim() || null,
         series: series.trim() || null,
@@ -97,7 +97,7 @@ export default function BookEditForm({ book, onCancel, onSave }: Props) {
       <View style={{ flexDirection: 'row', marginBottom: 12 }}>
         {[1, 2, 3, 4, 5].map(n => (
           <TouchableOpacity key={n} onPress={() => setRating(n)}>
-            <Text style={{ color: n <= rating ? '#FFC83D' : '#666', fontSize: 28 }}>
+            <Text style={{ color: n <= (rating ?? 0) ? '#FFC83D' : '#666', fontSize: 28 }}>
               ★
             </Text>
           </TouchableOpacity>
