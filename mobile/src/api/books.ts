@@ -77,3 +77,36 @@ export async function deleteBook(bookId: string): Promise<void> {
   });
   if (!res.ok) throw new Error('Failed to delete book');
 }
+
+
+export async function fetchSeries(seriesTitle: string): Promise<any[]> {
+  const res = await fetch(`${BASE_URL}/series/${encodeURIComponent(seriesTitle)}/books`);
+  if (!res.ok) throw new Error('Failed to fetch series books');
+  return res.json();
+}
+
+export interface SeriesBook {
+  id: string | null; title: string; position: number | null;
+  read_year: number | null; rating: number | null; read: boolean;
+  owned: boolean; // false for books known from Wikidata that aren't in the library
+}
+export interface SeriesInfo {
+  id: string; title: string; author: string | null;
+  status: string | null; progress_status: string | null;
+  books_read: number; books_total: number;
+  parts_known: boolean; // true once the book list has been fetched
+  books: SeriesBook[];
+}
+
+export async function getSeries(): Promise<SeriesInfo[]> {
+  const res = await fetch(`${BASE_URL}/series`);
+  if (!res.ok) throw new Error('Failed to fetch series');
+  return res.json();
+}
+
+export async function refreshSeriesTotal(seriesTitle: string): Promise<SeriesInfo> {
+  const res = await fetch(`${BASE_URL}/series/${encodeURIComponent(seriesTitle)}/refresh-total`, { method: 'POST' });
+  if (!res.ok) throw new Error('Series lookup failed');
+  return res.json();
+}
+

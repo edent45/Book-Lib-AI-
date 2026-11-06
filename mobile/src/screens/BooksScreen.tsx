@@ -1,12 +1,13 @@
-import React, {useCallback,useState} from 'react';
+import React, {useCallback,useEffect,useRef,useState} from 'react';
 import { View, Text, ScrollView, TouchableOpacity,
   StyleSheet, ActivityIndicator, Dimensions, Modal,
   useWindowDimensions, Image, TextInput, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors, fonts } from '../theme';
-import { getBooks , updateRating, updateNotes, updateBook, deleteBook } from '../api/books';
+import { getBooks , updateRating, updateNotes, updateBook, deleteBook, updateSeriesProgress, getSeries, refreshSeriesTotal, SeriesInfo } from '../api/books';
 import { Book } from '../types/book';
 import  BookEditForm ,  {type BookChanges} from '../components/BookEditForm';
+import PixelProgressBar from '../components/PixelProgressBar';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const BOOKS_PER_SHELF = 7;
@@ -142,6 +143,47 @@ function NotesEditor({ book, onSave }: { book: Book; onSave: (n: string) => void
   );
 }
 
+const PROGRESS_LABELS: Record<string, string> = {
+  reading: '📖 Reading', completed: '✅ Completed', dropped: '⏸ Dropped', TBR: '🔖 TBR',
+};
+
+function SeriesPanel({ info, currentId, onSelect, onProgress }: {
+  info: SeriesInfo;
+  currentId: string;
+  onSelect: (bookId: string) => void;
+  onProgress: (status: string) => void;
+}) {
+  return (
+    <View style={{ marginVertical: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {Object.keys(PROGRESS_LABELS).map(s => (
+          <TouchableOpacity
+            key={s}
+            onPress={() => onProgress(s)}
+            style={[styles.pill, { opacity: info.progress_status === s ? 1 : 0.5 }]}
+          >
+            <Text style={styles.pillText}>{PROGRESS_LABELS[s]}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {info.books.map(b => (
+        <TouchableOpacity
+          key={b.id ?? `part-${b.position}`}
+          disabled={!b.owned}
+          onPress={() => b.id && onSelect(b.id)}
+          style={{ paddingVertical: 6, opacity: b.owned ? 1 : 0.45 }}
+        >
+          <Text style={[styles.sectionBody, b.id === currentId && { fontWeight: '700' }]}>
+            {b.read ? '✓' : '○'} {b.position ? `#${b.position} · ` : ''}{b.title}
+            {b.rating ? `  ★${b.rating}` : ''}
+            {b.owned ? '' : '  (not in library)'}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 // ── BooksScreen ──────────────────────────────────────────────────────────────
 export default function BooksScreen() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -150,6 +192,31 @@ export default function BooksScreen() {
   const [selected, setSelected] = useState<Book | null>(null);
   const {height} = useWindowDimensions();
   const [editing, setEditing] = useState(false);
+  const [seriesMap, setSeriesMap] = useState<Record<string, SeriesInfo>>({});
+  const [showSeries, setShowSeries] = useState(false);
+  
+  const lookedUp = useRef<Set<string>>(new Set());
+
+  const loadSeries = useCallback(async () => {
+    try {
+      const list = await getSeries();
+      setSeriesMap(Object.fromEntries(list.map(s => [s.title, s])));
+
+      // Fetch the real series size once per series for those that don't have one yet
+      const unknown = list.filter(s => !s.parts_known && !lookedUp.current.has(s.title));
+      unknown.forEach(s => lookedUp.current.add(s.title));
+      const updated = await Promise.all(
+        unknown.map(s => refreshSeriesTotal(s.title).catch(() => null))
+      );
+      const found = updated.filter((s): s is SeriesInfo => !!s && s.parts_known);
+      if (found.length) {
+        setSeriesMap(m => ({ ...m, ...Object.fromEntries(found.map(s => [s.title, s])) }));
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    setShowSeries(false);
+  }, [selected?.id]);
 
   const handleRate = (book: Book, rating: number) => {
     const prev = book.rating ?? 0;
@@ -184,6 +251,7 @@ export default function BooksScreen() {
             setBooks(bs => bs.filter(b => b.id !== book.id));
             setSelected(null);
             setEditing(false);
+            loadSeries();
           } catch {
             Alert.alert('Error', 'Could not delete the book.');
           }
@@ -195,13 +263,14 @@ export default function BooksScreen() {
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
+      loadSeries();
 
       getBooks()
         .then(data => setBooks(data.length > 0 ? data : MOCK_BOOKS))
         //.catch(() => setError('Could not load books'))
         .catch(() => setBooks(MOCK_BOOKS))
         .finally(() => setLoading(false));
-    }, [])
+    }, [loadSeries])
   );
 
   if (loading) {
@@ -289,6 +358,7 @@ export default function BooksScreen() {
                   );
                   setSelected(updatedBook);
                   setEditing(false);
+                  loadSeries();
                 }}
               />
             ) : (
@@ -312,20 +382,25 @@ export default function BooksScreen() {
                         <Text style={styles.backIcon}>‹</Text>
                       </TouchableOpacity>
 
-                      {cover ? (
-                        <Image source={{ uri: cover }} style={styles.heroCover} />
-                      ) : selected.cover_image ? (
-                        <Image
-                          source={{
-                            uri: `data:image/jpeg;base64,${selected.cover_image}`,
-                          }}
-                          style={styles.heroCover}
-                        />
-                      ) : (
-                        <View style={[styles.heroCover, styles.heroPlaceholder]}>
-                          <Text style={{ fontSize: 64 }}>📖</Text>
-                        </View>
-                      )}
+                      {/* The cover shrinks to leave room for the title and author */}
+                      {(() => {
+                        const coverStyle = {
+                          height: Math.min(250, height * 0.5 - 150),
+                          width: Math.min(250, height * 0.5 - 150) * 0.68,
+                        };
+                        return cover ? (
+                          <Image source={{ uri: cover }} style={[styles.heroCover, coverStyle]} />
+                        ) : selected.cover_image ? (
+                          <Image
+                            source={{ uri: `data:image/jpeg;base64,${selected.cover_image}` }}
+                            style={[styles.heroCover, coverStyle]}
+                          />
+                        ) : (
+                          <View style={[styles.heroCover, styles.heroPlaceholder, coverStyle]}>
+                            <Text style={{ fontSize: 64 }}>📖</Text>
+                          </View>
+                        );
+                      })()}
 
                       <Text style={styles.heroTitle} numberOfLines={2}>
                         {selected.title}
@@ -373,13 +448,39 @@ export default function BooksScreen() {
                         ))}
                       </View>
 
-                      {selected.series && (
-                        <Text style={styles.sectionBody}>
-                          {selected.series}
-                          {selected.position ? ` · #${selected.position}` : ''}
-                        </Text>
-                      )}
-
+                      {selected.series && seriesMap[selected.series] && (() => {
+                        const info = seriesMap[selected.series!];
+                        return (
+                          <>
+                            <TouchableOpacity onPress={() => setShowSeries(v => !v)} activeOpacity={0.7}>
+                              <Text style={styles.sectionBody}>
+                                📚 {selected.series}{selected.position ? ` · #${selected.position}` : ''}
+                                {info.progress_status ? `  ${PROGRESS_LABELS[info.progress_status] ?? ''}` : ''}
+                                {showSeries ? '  ▲' : '  ▼'}
+                              </Text>
+                              <PixelProgressBar read={info.books_read} total={info.books_total} />
+                            </TouchableOpacity>
+                            {showSeries && (
+                              <SeriesPanel
+                                info={info}
+                                currentId={selected.id}
+                                onSelect={id => {
+                                  const next = books.find(b => b.id === id);
+                                  if (next) setSelected(next);
+                                }}
+                                onProgress={async status => {
+                                  try {
+                                    await updateSeriesProgress(info.title, status);
+                                    loadSeries();
+                                  } catch {
+                                    Alert.alert('Error', 'Could not update series progress.');
+                                  }
+                                }}
+                              />
+                            )}
+                          </>
+                        );
+                      })()}
                       <NotesEditor
                         key={selected.id}
                         book={selected}

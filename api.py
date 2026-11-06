@@ -1,8 +1,10 @@
 import base64 #for images
+from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel #for request body validation
 import data
 import httpx
+from series_lookup import lookup_series_parts
 ""'api.py is FastAPI web server that will warp the functions in data.py and expose them as API endpoints.'"" 
 
 
@@ -71,7 +73,7 @@ def create_book(book: Book):
 #--- PUT / series progress ---
 class SeriesProgress(BaseModel):
     series_title: str
-    status: str
+    status: Literal['reading', 'completed', 'dropped', 'TBR']
     
 @app.put("/series/{series_title}/progress")
 def update_series_progress(series_title: str, body: SeriesProgress):
@@ -174,3 +176,35 @@ async def search_books(q: str):
         for book in docs
     ]
 
+# Fills in the series size from Wikidata
+@app.post("/series/{series_title}/refresh-total")
+async def refresh_series_total(series_title: str):
+    if data.get_series(series_title) is None:
+        raise HTTPException(status_code=404, detail="Series not found")
+    try:
+        parts = await lookup_series_parts(series_title)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Series lookup failed")
+    if not parts:
+        return data.get_series(series_title)
+    return data.set_series_parts(series_title, parts)
+
+#--- List all series ---
+@app.get("/series")
+def list_series():
+    result = data.list_series()
+    return result
+
+@app.get("/series/{series_title}")
+def get_series(series_title: str):
+    result = data.get_series(series_title)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Series not found")
+    return result
+
+@app.get("/series/{series_title}/books")
+def get_series_books(series_title: str):
+    result = data.get_series_books(series_title)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Series not found")
+    return result

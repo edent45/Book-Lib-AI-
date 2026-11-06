@@ -1,4 +1,5 @@
 import sqlite3
+import json
 import argparse
 import uuid
 
@@ -10,6 +11,19 @@ def uid() -> str:  # Generate a unique identifier
 def connect(): # Connect to the SQLite database
     con = sqlite3.connect(DB_PATH)
     con.execute("PRAGMA foreign_keys = ON;")
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS UserSeriesProgress (
+            series_id TEXT PRIMARY KEY,
+            status TEXT CHECK(status IN ('reading', 'completed', 'dropped', 'TBR')),
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (series_id) REFERENCES Series(id) ON DELETE CASCADE
+        )
+    """)
+    cols = [r[1] for r in con.execute("PRAGMA table_info(Series)")]
+    if "total_books" not in cols:
+        con.execute("ALTER TABLE Series ADD COLUMN total_books INTEGER")
+    if "parts_json" not in cols:
+        con.execute("ALTER TABLE Series ADD COLUMN parts_json TEXT")
     return con
 
 def get_or_create_id_by_name(con: sqlite3.Connection, table: str, name: str) -> str:
@@ -270,6 +284,105 @@ def delete_book(book_id: str):
     if not deleted:
         return
     return {"book_id": book_id}
+
+def _series_books(cur, series_id: str) -> list[dict]:
+    # A book counts as read when read_year is set
+    cur.execute("""
+        SELECT b.id, b.title, sb.position, b.read_year, b.rating
+        FROM Books b
+        LEFT JOIN series_books sb ON sb.book_id = b.id AND sb.series_id = b.series_id
+        WHERE b.series_id = ?
+        ORDER BY sb.position IS NULL, sb.position, b.title
+    """, (series_id,))
+    return [
+        {"id": r[0], "title": r[1], "position": r[2], "read_year": r[3],
+         "rating": r[4], "read": r[3] is not None, "owned": True}
+        for r in cur.fetchall()
+    ]
+
+
+def _merge_known_parts(owned: list[dict], parts: list[dict]) -> list[dict]:
+    """Owned books replace the known part at the same position; the rest show as not owned."""
+    by_position = {}
+    for b in owned:
+        by_position.setdefault(b["position"], b)
+    merged = []
+    for part in parts:
+        book = by_position.pop(part["position"], None)
+        merged.append(book or {
+            "id": None, "title": part["title"], "position": part["position"],
+            "read_year": None, "rating": None, "read": False, "owned": False,
+        })
+    # Owned books that don't match a known position (or have none) go at the end
+    leftovers = [b for b in owned if b not in merged]
+    return merged + leftovers
+
+
+def _series_rows(cur, where: str = "", params: tuple = ()) -> list[dict]:
+    cur.execute(f"""
+        SELECT s.id, s.title, a.name, s.status, p.status, s.parts_json
+        FROM Series s
+        LEFT JOIN Authors a ON a.id = s.author_id
+        LEFT JOIN UserSeriesProgress p ON p.series_id = s.id
+        {where}
+        ORDER BY s.title
+    """, params)
+    result = []
+    for sid, title, author, status, progress, parts_json in cur.fetchall():
+        parts = json.loads(parts_json) if parts_json else None
+        owned = _series_books(cur, sid)
+        books = _merge_known_parts(owned, parts) if parts else owned
+        result.append({
+            "id": sid,
+            "title": title,
+            "author": author,
+            "status": status,
+            "progress_status": progress,
+            "books_read": sum(b["read"] for b in books),
+            "books_total": len(books),
+            "parts_known": parts is not None,
+            "books": books,
+        })
+    return result
+
+
+def set_series_parts(series_title: str, parts: list[dict]):
+    con = connect()
+    try:
+        cur = con.execute(
+            "UPDATE Series SET parts_json = ?, total_books = ? WHERE title = ?",
+            (json.dumps(parts), len(parts), series_title),
+        )
+        con.commit()
+        if not cur.rowcount:
+            return None
+    finally:
+        con.close()
+    return get_series(series_title)
+
+
+def list_series():
+    con = connect()
+    try:
+        return _series_rows(con.cursor())
+    finally:
+        con.close()
+
+
+def get_series(series_title: str):
+    con = connect()
+    try:
+        rows = _series_rows(con.cursor(), "WHERE s.title = ?", (series_title,))
+    finally:
+        con.close()
+    return rows[0] if rows else None
+
+
+def get_series_books(series_title: str):
+    series = get_series(series_title)
+    return series["books"] if series else None
+
+
 
 
 
